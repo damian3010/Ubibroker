@@ -98,3 +98,9 @@ graph TD
     class MQ broker;
     class Promtail,Loki,Tempo,Grafana obs;
     class VB core;
+``
+
+5. Casos de Uso y Flujos de Datos (Sequence Diagrams)
+Caso de Uso 1: Aprobación de Órdenes (Maker-Checker)
+Descripción: Un cliente crea una orden, la cual queda en pausa hasta que un ejecutivo la aprueba en el Backoffice.
+
