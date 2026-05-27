@@ -98,9 +98,110 @@ graph TD
     class MQ broker;
     class Promtail,Loki,Tempo,Grafana obs;
     class VB core;
-``
+```
 
 5. Casos de Uso y Flujos de Datos (Sequence Diagrams)
 Caso de Uso 1: Aprobación de Órdenes (Maker-Checker)
 Descripción: Un cliente crea una orden, la cual queda en pausa hasta que un ejecutivo la aprueba en el Backoffice.
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Cliente
+    actor Ejecutivo
+    participant Order as Order Service (Spring)
+    participant MQ as RabbitMQ
+    participant Go as Integration Service (Go)
+    participant VB as Virtual Broker REST
 
+    Note over Cliente, Order: 1. Creación por Cliente
+    Cliente->>Order: POST /api/orders
+    Order->>Order: Guarda en DB (Estado: PENDIENTE)
+    Order-->>Cliente: 201 Created
+
+    Note over Cliente, Ejecutivo: ... Intervención Humana ...
+
+    Note over Ejecutivo, Order: 2. Aprobación Ejecutiva (Backoffice)
+    Ejecutivo->>Order: POST /api/admin/orders/{id}/approve
+    Order->>Order: Actualiza DB (Estado: ENVIANDO)
+    Order->>MQ: Publica evento {action: "SEND_TO_VB"}
+    Order-->>Ejecutivo: 200 OK
+
+    Note over MQ, VB: 3. Inyección Asíncrona al Core
+    MQ->>Go: Consume mensaje
+    Go->>VB: POST /api/v1/broker/orders
+    VB-->>Go: 200 OK (Aprobado)
+    Go->>MQ: Publica evento {status: "COMPLETADA"}
+    MQ->>Order: Actualiza estado final
+```
+
+Caso de Uso 2: Generación de Estados de Cuenta en PDF
+Descripción: El sistema genera PDFs de forma asíncrona para no bloquear los hilos principales del servidor.
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Cliente
+    participant DocSrv as Document Service (Spring)
+    participant MQ as RabbitMQ
+    participant S3 as MinIO (S3)
+    participant Internals as Golang & Client Srv
+    participant Notif as Notification Srv
+
+    Cliente->>DocSrv: POST /api/statements/request
+    DocSrv->>MQ: Encola trabajo en 'statement.generate.queue'
+    DocSrv-->>Cliente: 202 Accepted (Procesando...)
+
+    Note over DocSrv, Internals: Worker Asíncrono
+    MQ->>DocSrv: Consume trabajo
+    DocSrv->>Internals: GET Datos Cliente + Movimientos VB
+    Internals-->>DocSrv: Retorna JSON consolidado
+    DocSrv->>DocSrv: Renderiza PDF en RAM
+    
+    DocSrv->>S3: Upload PDF File
+    S3-->>DocSrv: Retorna Presigned URL
+    DocSrv->>MQ: Publica Evento 'statement.ready' {url}
+    
+    MQ->>Notif: Consume evento
+    Notif-->>Cliente: Envía WebSocket Alert y Email
+```
+
+6. Diccionario de Endpoints REST (Contratos Base)
+
+
+6.1. Auth & Security (/api/auth)
+POST /login -> Autenticación y generación de JWT.
+
+POST /recover-password -> Dispara flujo de recuperación.
+
+6.2. Client Management (/api/clients)
+POST /validate -> Valida RIF/ID contra Virtual Broker.
+
+POST /register -> Crea perfil local.
+
+GET /me -> Consulta de perfil.
+
+PUT /me -> Actualización de datos de contacto.
+
+6.3. Integration / Dashboards (/api/portfolio) - Servidos por Golang/Redis
+GET /consolidated -> Posición global (Saldos y Totales).
+
+GET /products -> Detalle de inversiones activas.
+
+GET /calendar?month=X&year=Y -> Eventos de vencimiento formateados.
+
+6.4. Order Management (/api/orders)
+POST / -> Crear nueva orden o reinversión (Cliente).
+
+GET / -> Listar histórico (Cliente).
+
+GET /admin?status=PENDIENTE -> Listar pool de órdenes (Ejecutivos).
+
+POST /admin/{id}/approve -> Aprobar transacción (Ejecutivos).
+
+6.5. Documents & Notifications
+POST /api/statements/request -> Solicitar estado de cuenta.
+
+GET /api/notifications -> Obtener historial de alertas no leídas.
+
+PATCH /api/notifications/{id}/read -> Marcar alerta como leída.
+
+WS wss://{host}/ws/notifications -> Canal STOMP persistente para alertas en tiempo real.
