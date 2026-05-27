@@ -101,8 +101,67 @@ graph TD
 ```
 
 ## 5. Casos de Uso y Flujos de Datos (Sequence Diagrams)
-Caso de Uso 1: Aprobación de Órdenes (Maker-Checker)
-Descripción: Un cliente crea una orden, la cual queda en pausa hasta que un ejecutivo la aprueba en el Backoffice.
+
+Caso 1: Registro por ID/RIF y Correo
+Descripción: El cliente verifica si existe en la casa de bolsa para poder crear sus credenciales web.
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Cliente
+    participant ClientSrv as Client Service
+    participant Go as Integration Srv
+    participant VB as Virtual Broker REST
+    participant Auth as Auth Service
+
+    Cliente->>ClientSrv: POST /validate {rif, email}
+    ClientSrv->>Go: Consulta existencia síncrona
+    Go->>VB: GET /api/v1/broker/clients/check
+    VB-->>Go: 200 OK (Existe: true, ID_VB: "VB-99")
+    Go-->>ClientSrv: Retorna ID de Virtual Broker
+    ClientSrv->>Auth: POST interno (Crear credenciales)
+    Auth-->>Cliente: 201 Created (Registro Exitoso)
+```
+    
+Caso 2: Recuperación de Usuario/Contraseña
+Descripción: El cliente solicita restablecer su acceso mediante un código (OTP) o enlace enviado a su correo registrado.
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Cliente
+    participant Auth as Auth Service
+    participant MQ as RabbitMQ
+    participant Notif as Notification Srv
+
+    Cliente->>Auth: POST /recover-password {email}
+    Auth->>Auth: Genera Token temporal
+    Auth->>MQ: Publica {action: "SEND_RECOVERY", email}
+    Auth-->>Cliente: 202 Accepted (Revisa tu correo)
+    MQ->>Notif: Consume mensaje
+    Notif->>Notif: Envía correo electrónico (SMTP)
+```
+Caso 3: Consulta de Operaciones y Tableros (Posición Consolidada)
+Descripción: El cliente entra al sistema y visualiza sus saldos, productos activos y transacciones pasadas de manera inmediata.
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Cliente
+    participant Go as Integration Srv (Golang)
+    participant Redis as Redis Cache
+    participant VB as Virtual Broker REST
+
+    Cliente->>Go: GET /api/portfolio/consolidated
+    Go->>Redis: Busca 'consolidated_user_123'
+    alt Cache Hit (Datos en Memoria)
+        Redis-->>Go: Retorna JSON (~10ms)
+    else Cache Miss (Datos Vencidos/Vacíos)
+        Go->>VB: GET /api/v1/broker/portfolio
+        VB-->>Go: Retorna crudos (~2000ms)
+        Go->>Redis: Guarda copia por 5 minutos
+    end
+    Go-->>Cliente: 200 OK (JSON formateado)
+```
+Caso 4: Creación de Órdenes y Reinversiones (Flujo Maker-Checker)
+Descripción: El cliente crea una orden (o reinvierte un vencimiento). La orden queda en pausa hasta que un ejecutivo la aprueba en el Backoffice.
 ```mermaid
 sequenceDiagram
     autonumber
@@ -114,14 +173,14 @@ sequenceDiagram
     participant VB as Virtual Broker REST
 
     Note over Cliente, Order: 1. Creación por Cliente
-    Cliente->>Order: POST /api/orders
+    Cliente->>Order: POST /api/orders {type, amount}
     Order->>Order: Guarda en DB (Estado: PENDIENTE)
     Order-->>Cliente: 201 Created
 
     Note over Cliente, Ejecutivo: ... Intervención Humana ...
 
     Note over Ejecutivo, Order: 2. Aprobación Ejecutiva (Backoffice)
-    Ejecutivo->>Order: POST /api/admin/orders/{id}/approve
+    Ejecutivo->>Order: POST /admin/orders/{id}/approve
     Order->>Order: Actualiza DB (Estado: ENVIANDO)
     Order->>MQ: Publica evento {action: "SEND_TO_VB"}
     Order-->>Ejecutivo: 200 OK
@@ -132,10 +191,44 @@ sequenceDiagram
     VB-->>Go: 200 OK (Aprobado)
     Go->>MQ: Publica evento {status: "COMPLETADA"}
     MQ->>Order: Actualiza estado final
-```
 
-Caso de Uso 2: Generación de Estados de Cuenta en PDF
-Descripción: El sistema genera PDFs de forma asíncrona para no bloquear los hilos principales del servidor.
+```
+Caso 5: Visualización de Vencimientos en Calendario Interactivo
+Descripción: El cliente revisa los vencimientos de sus productos en una vista de calendario sin que su dispositivo deba realizar cálculos complejos.
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Cliente
+    participant Go as Integration Srv
+    participant VB as Virtual Broker REST
+
+    Cliente->>Go: GET /api/portfolio/calendar?month=06
+    Go->>VB: Pide lista plana de vencimientos
+    VB-->>Go: Retorna array simple [{id, date, amount}]
+    Go->>Go: Agrupa datos por día y formatea para FullCalendar
+    Go-->>Cliente: 200 OK (JSON estructurado)
+```
+Caso 6: Actualización de Datos Personales
+Descripción: El cliente modifica su dirección o teléfono desde UbiBroker y el sistema sincroniza la información con el core de la casa de bolsa.
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Cliente
+    participant ClientSrv as Client Service
+    participant MQ as RabbitMQ
+    participant Go as Integration Srv
+    participant VB as Virtual Broker REST
+
+    Cliente->>ClientSrv: PUT /api/clients/me {address}
+    ClientSrv->>ClientSrv: Actualiza PostgreSQL local
+    ClientSrv->>MQ: Publica {action: "UPDATE_VB_PROFILE"}
+    ClientSrv-->>Cliente: 200 OK (Perfil Actualizado)
+    MQ->>Go: Consume mensaje
+    Go->>VB: PATCH /api/v1/broker/clients
+    VB-->>Go: 200 OK
+```
+Caso 7: Generación de Estados de Cuenta (PDF)
+Descripción: El cliente solicita su estado de cuenta mensual. El sistema lo genera de fondo para no bloquear la interfaz y le notifica cuando está listo.
 ```mermaid
 sequenceDiagram
     autonumber
@@ -143,65 +236,44 @@ sequenceDiagram
     participant DocSrv as Document Service (Spring)
     participant MQ as RabbitMQ
     participant S3 as MinIO (S3)
-    participant Internals as Golang & Client Srv
     participant Notif as Notification Srv
 
     Cliente->>DocSrv: POST /api/statements/request
-    DocSrv->>MQ: Encola trabajo en 'statement.generate.queue'
+    DocSrv->>MQ: Encola 'statement.generate.queue'
     DocSrv-->>Cliente: 202 Accepted (Procesando...)
 
-    Note over DocSrv, Internals: Worker Asíncrono
+    Note over DocSrv, Notif: Worker Asíncrono
     MQ->>DocSrv: Consume trabajo
-    DocSrv->>Internals: GET Datos Cliente + Movimientos VB
-    Internals-->>DocSrv: Retorna JSON consolidado
     DocSrv->>DocSrv: Renderiza PDF en RAM
-    
-    DocSrv->>S3: Upload PDF File
+    DocSrv->>S3: Sube archivo .pdf
     S3-->>DocSrv: Retorna Presigned URL
     DocSrv->>MQ: Publica Evento 'statement.ready' {url}
     
     MQ->>Notif: Consume evento
     Notif-->>Cliente: Envía WebSocket Alert y Email
 ```
----
+
 ## 6. Diccionario de Endpoints REST (Contratos Base)
 
+Esta tabla resume los endpoints expuestos a través del API Gateway, los cuales actúan como el contrato de comunicación entre el Frontend y los microservicios.
 
-6.1. Auth & Security (/api/auth)
-POST /login -> Autenticación y generación de JWT.
-
-POST /recover-password -> Dispara flujo de recuperación.
-
-6.2. Client Management (/api/clients)
-POST /validate -> Valida RIF/ID contra Virtual Broker.
-
-POST /register -> Crea perfil local.
-
-GET /me -> Consulta de perfil.
-
-PUT /me -> Actualización de datos de contacto.
-
-6.3. Integration / Dashboards (/api/portfolio) - Servidos por Golang/Redis
-GET /consolidated -> Posición global (Saldos y Totales).
-
-GET /products -> Detalle de inversiones activas.
-
-GET /calendar?month=X&year=Y -> Eventos de vencimiento formateados.
-
-6.4. Order Management (/api/orders)
-POST / -> Crear nueva orden o reinversión (Cliente).
-
-GET / -> Listar histórico (Cliente).
-
-GET /admin?status=PENDIENTE -> Listar pool de órdenes (Ejecutivos).
-
-POST /admin/{id}/approve -> Aprobar transacción (Ejecutivos).
-
-6.5. Documents & Notifications
-POST /api/statements/request -> Solicitar estado de cuenta.
-
-GET /api/notifications -> Obtener historial de alertas no leídas.
-
-PATCH /api/notifications/{id}/read -> Marcar alerta como leída.
-
+| Microservicio | Endpoint | Método | Descripción |
+| :--- | :--- | :--- | :--- |
+| **Auth** | `/api/auth/login` | `POST` | Autenticación y generación de JWT. |
+| **Auth** | `/api/auth/recover-password` | `POST` | Dispara el flujo de recuperación de credenciales. |
+| **Client** | `/api/clients/validate` | `POST` | Valida RIF/ID contra Virtual Broker. |
+| **Client** | `/api/clients/register` | `POST` | Crea perfil local del cliente. |
+| **Client** | `/api/clients/me` | `GET` | Consulta de perfil del cliente. |
+| **Client** | `/api/clients/me` | `PUT` | Actualización de datos personales. |
+| **Portfolio**| `/api/portfolio/consolidated` | `GET` | Posición global (saldos y totales vía Redis). |
+| **Portfolio**| `/api/portfolio/products` | `GET` | Detalle de inversiones activas. |
+| **Portfolio**| `/api/portfolio/calendar` | `GET` | Eventos de vencimiento formateados. |
+| **Orders** | `/api/orders` | `POST` | Crear nueva orden o reinversión. |
+| **Orders** | `/api/orders` | `GET` | Listar histórico de órdenes. |
+| **Orders** | `/api/admin/orders` | `GET` | Listar pool de órdenes pendientes (Ejecutivos). |
+| **Orders** | `/api/admin/orders/{id}/approve` | `POST` | Aprobación ejecutiva de transacción. |
+| **Documents**| `/api/statements/request` | `POST` | Solicitar generación de estado de cuenta. |
+| **Notif** | `/api/notifications` | `GET` | Obtener historial de alertas no leídas. |
+| **Notif** | `/api/notifications/{id}/read` | `PATCH`| Marcar notificación como leída. |
+| **Notif** | `wss://{host}/ws/notifications` | `WS` | Canal STOMP para alertas en tiempo real. |
 WS wss://{host}/ws/notifications -> Canal STOMP persistente para alertas en tiempo real.
