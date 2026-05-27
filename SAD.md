@@ -100,7 +100,7 @@ graph TD
     class VB core;
 ```
 
-5. Casos de Uso y Flujos de Datos (Sequence Diagrams)
+## 5. Casos de Uso y Flujos de Datos (Sequence Diagrams)
 Caso de Uso 1: Aprobación de Órdenes (Maker-Checker)
 Descripción: Un cliente crea una orden, la cual queda en pausa hasta que un ejecutivo la aprueba en el Backoffice.
 ```mermaid
@@ -163,8 +163,8 @@ sequenceDiagram
     MQ->>Notif: Consume evento
     Notif-->>Cliente: Envía WebSocket Alert y Email
 ```
-
-6. Diccionario de Endpoints REST (Contratos Base)
+---
+## 6. Diccionario de Endpoints REST (Contratos Base)
 
 
 6.1. Auth & Security (/api/auth)
