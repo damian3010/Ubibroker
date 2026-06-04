@@ -1,72 +1,69 @@
 # Plan de Implementación y Hoja de Ruta (Roadmap) - Proyecto UbiBroker
-**Estrategia de Desarrollo Acelerado mediante IA (Cursor / Google Antigravity)**
+**Estrategia de Desarrollo Asistido por IA (6 Semanas)**
 
-Este documento traza la ruta de ejecución para construir la arquitectura de microservicios (Java, Go, Postgres, Redis, RabbitMQ) utilizando agentes de inteligencia artificial para maximizar la productividad y reducir el *Time-to-Market*. 
-
-Al delegar la creación de infraestructura y *boilerplate* a la IA, el equipo de arquitectura puede centrarse exclusivamente en la lógica de negocio y la resiliencia del sistema.
+Este documento traza la ruta de ejecución para construir la arquitectura de microservicios (Java, Go, Postgres, Redis, RabbitMQ). Aunque el uso de agentes de inteligencia artificial (Cursor / Antigravity) acelera dramáticamente la escritura de código, este cronograma de 6 semanas asegura el tiempo necesario para la validación arquitectónica, pruebas de estrés y endurecimiento de seguridad (*Security Hardening*).
 
 ---
 
-## 1. Hoja de Ruta de Alto Nivel (Roadmap)
+## 1. Hoja de Ruta de Alto Nivel (Milestones)
 
-El proyecto se divide en 4 grandes hitos (Milestones) secuenciales:
-
-* **Hito 1: Cimientos y Mock (La Red de Seguridad):** Establecer la infraestructura base en Docker y emular el core bancario/bursátil para no depender de sistemas externos lentos durante el desarrollo.
-* **Hito 2: Capa Anticorrupción (Velocidad):** Desarrollar el servicio en Golang con Redis para interceptar y acelerar las peticiones de lectura.
-* **Hito 3: Cerebro Transaccional (Reglas de Negocio):** Implementar los microservicios en Java Spring Boot bajo los principios de *Domain-Driven Design* (Auth, Order, Client).
-* **Hito 4: Asincronía y Despliegue (Robustez):** Conectar RabbitMQ para flujos de órdenes, configurar migraciones automatizadas y desplegar el clúster local con Docker Swarm.
+* **Fase 1 (Semana 1): Cimientos y Emulación.** Orquestación base y Virtual Broker Mock.
+* **Fase 2 (Semana 2): Capa Anticorrupción.** Microservicio en Golang y caché en Redis.
+* **Fase 3 (Semanas 3 y 4): Cerebro Transaccional.** Microservicios Spring Boot y reglas de negocio.
+* **Fase 4 (Semanas 5 y 6): Asincronía, Observabilidad y Producción.** RabbitMQ, Stack PLG y clúster Swarm.
 
 ---
 
-## 2. Plan de Implementación Acelerado (Cronograma Estimado: 3 Semanas)
+## 2. Cronograma Detallado de Implementación
 
-*Nota: Los tiempos asumen la asistencia continua de un agente de IA (como Antigravity IDE) para la generación de código, configuraciones YAML y pruebas unitarias.*
+### Fase 1: Cimientos de Infraestructura y Orquestación Base
+**Duración:** Semana 1
+**Objetivo:** Tener el entorno unificado corriendo en local y el sistema core emulado.
 
-### Fase 1: Cimientos de Infraestructura y Orquestación
-**Duración:** Días 1 - 3
-**Objetivo:** Tener el entorno unificado corriendo en local.
-
-| Tarea Técnica | Entregable | Aceleración por IA (Antigravity/Cursor) |
+| Tarea Técnica | Entregable | Apoyo de IA (Antigravity/Cursor) |
 | :--- | :--- | :--- |
-| Configuración de Orquestación | `docker-compose.yml` raíz funcional. | Generación automática de topología de redes, volúmenes y puertos. |
-| Aprovisionamiento de Datos | Contenedores de Postgres, Redis, RabbitMQ. | Creación de scripts de inicialización de bases de datos y usuarios. |
-| Creación del Virtual Broker | Servicio `virtual-broker-mock` en Java. | Generación de endpoints REST falsos y datos semilla (JSON) a partir de descripciones de negocio. |
+| Orquestación Inicial | `docker-compose.yml` base funcional. | Generación automática de topología de redes, volúmenes y puertos seguros. |
+| Aprovisionamiento de Datos | Contenedores de Postgres, Redis, RabbitMQ. | Creación de scripts SQL de inicialización (schemas, usuarios, roles). |
+| Virtual Broker (Mock) | Servicio `virtual-broker-mock` operativo. | Generación de endpoints REST y JSON semilla basados en las especificaciones del core bancario. |
+| Pruebas de Red | Comunicación entre contenedores verificada. | Diagnóstico de errores DNS internos de Docker. |
 
-### Fase 2: Construcción de la Capa Anticorrupción
-**Duración:** Días 4 - 7
-**Objetivo:** Interceptar tráfico y cachear respuestas en milisegundos.
+### Fase 2: Construcción de la Capa Anticorrupción (Velocidad)
+**Duración:** Semana 2
+**Objetivo:** Interceptar el tráfico de lectura y cachear respuestas en submilisegundos.
 
-| Tarea Técnica | Entregable | Aceleración por IA (Antigravity/Cursor) |
+| Tarea Técnica | Entregable | Apoyo de IA (Antigravity/Cursor) |
 | :--- | :--- | :--- |
-| Inicialización de Golang | `integration-service-go` estructurado. | Creación de módulos Go, configuración de Fiber/Gin y `Dockerfile` optimizado. |
-| Integración con Redis | Patrón Cache-Aside implementado. | Autocompletado de la lógica de conexión, TTL y manejo de errores (Cache Miss/Hit). |
-| Enrutamiento y Proxies | Peticiones fluyendo de Go hacia el Mock. | Generación de clientes HTTP concurrentes (Goroutines) para consumo de APIs. |
+| Estructura en Go | `integration-service-go` configurado. | Configuración de Fiber/Gin, *middlewares* y `Dockerfile` multi-etapa (imagen < 20MB). |
+| Integración Redis | Patrón *Cache-Aside* implementado. | Autocompletado de lógica de conexión, TTL y control de fallos (Cache Miss/Hit). |
+| Concurrencia | Enrutamiento HTTP hacia el Mock. | Generación de clientes HTTP seguros utilizando *Goroutines* y *Channels*. |
+| Pruebas de Carga | Benchmarks del servicio Go. | Creación de scripts en K6 o JMeter para saturar el endpoint y validar la caché. |
 
-### Fase 3: Core de Negocio (Microservicios Spring Boot)
-**Duración:** Días 8 - 14
-**Objetivo:** Implementar la lógica transaccional y la seguridad.
+### Fase 3: Core de Negocio (Domain-Driven Design en Java)
+**Duración:** Semanas 3 y 4
+**Objetivo:** Implementar la lógica transaccional, seguridad y persistencia relacional.
 
-| Tarea Técnica | Entregable | Aceleración por IA (Antigravity/Cursor) |
+| Tarea Técnica | Entregable | Apoyo de IA (Antigravity/Cursor) |
 | :--- | :--- | :--- |
-| Seguridad y Autenticación | `auth-service` con emisión de JWT. | Implementación rápida de Spring Security y filtros de validación de tokens. |
-| Dominio de Órdenes | `order-service` con base de datos propia. | Creación de Entidades JPA, Repositorios, Controladores y migraciones Flyway/Liquibase. |
-| Dominio de Clientes | `client-service` gestionando perfiles. | Mapeo de DTOs y validaciones de entrada basadas en reglas descritas en lenguaje natural. |
+| Identidad y Acceso | `auth-service` con emisión de JWT. | Implementación rápida de Spring Security y filtros de validación de tokens. |
+| Dominio de Órdenes | `order-service` operativo. | Creación de Entidades JPA, Repositorios, Controladores y migraciones Flyway/Liquibase. |
+| Dominios de Soporte | `client-service` y `document-service`. | Mapeo de DTOs y validaciones de entrada basadas en reglas descritas en lenguaje natural. |
+| Contención de Memoria | JVM ajustada para alta concurrencia. | Cálculo de parámetros `-Xmx`, `-Xms` y asignación de `cgroups` de Docker. |
 
-### Fase 4: Mensajería Asíncrona y Preparación a Producción
-**Duración:** Días 15 - 21
-**Objetivo:** Desacoplar servicios, afinar el rendimiento y preparar el clúster.
+### Fase 4: Asincronía, Observabilidad y Despliegue en Clúster
+**Duración:** Semanas 5 y 6
+**Objetivo:** Desacoplar servicios, auditar la plataforma y lanzar a producción.
 
-| Tarea Técnica | Entregable | Aceleración por IA (Antigravity/Cursor) |
+| Tarea Técnica | Entregable | Apoyo de IA (Antigravity/Cursor) |
 | :--- | :--- | :--- |
-| Eventos con RabbitMQ | Productores y Consumidores AMQP conectados. | Configuración de colas, *exchanges* y *bindings* a partir de descripciones de flujos (ej. "Orden Creada"). |
-| Contención de Recursos | Límites de RAM implementados (`-Xmx`). | Cálculo automático de `cgroups` y parámetros de JVM para ajustarse al hardware objetivo. |
-| Transición a Swarm | `docker-compose.prod.yml` listo. | Conversión de la topología local a directivas `deploy`, políticas de reinicio y *Zero Downtime*. |
-| Observabilidad Base | Archivos de logs estandarizados. | Instrumentación automática del código con OpenTelemetry SDKs para Go y Java. |
+| Eventos con RabbitMQ | Productores y Consumidores AMQP conectados. | Configuración de colas, *exchanges* y *bindings* para flujos asíncronos (ej. "Orden Ejecutada"). |
+| Instrumentación OTel | OpenTelemetry integrado en Go y Java. | Inyección de librerías para trazabilidad distribuida sin alterar la lógica de negocio. |
+| CI/CD Pipeline | GitHub Actions configurado. | Scripts para compilación automática, purga de imágenes antiguas y subida a registro (GHCR o ACR). |
+| Transición a Swarm | `docker-compose.prod.yml` final. | Implementación de directivas `deploy`, *placement constraints* y despliegue *Zero Downtime*. |
 
 ---
 
-## 3. Beneficios Directos del Desarrollo Agentic (Agent-First)
+## 3. Ventaja Estratégica del Plan a 6 Semanas
 
-1.  **Reducción de Deuda Técnica:** Las herramientas como Antigravity garantizan que el código generado siga patrones de diseño modernos (Hexagonal, DDD) desde el día cero, evitando refactorizaciones costosas.
-2.  **Resolución de Errores en Tiempo Real:** En lugar de depurar un error de red de Docker (ej. "Connection Refused") durante horas, el agente analiza los `docker logs` y corrige el orden de arranque de forma autónoma.
-3.  **Foco en el Valor:** El 80% del tiempo del Arquitecto/Desarrollador se invierte en definir flujos de negocio y validar integraciones, mientras la IA asume el 20% operativo pesado (escribir `Dockerfiles`, mapear entidades a base de datos, configurar *middlewares*).
+Distribuir el proyecto en 6 semanas utilizando herramientas de IA permite un equilibrio perfecto entre **velocidad de escritura** y **calidad de arquitectura**:
+1. **Foco en el Diseño, no en la Sintaxis:** La IA asume el trabajo pesado de codificar los *boilerplates* y configuraciones YAML, permitiendo al equipo dedicar las semanas 3 y 4 puramente a refinar las reglas de negocio críticas.
+2. **Espacio para el Caos (Chaos Engineering):** Las semanas 5 y 6 ofrecen un margen de tiempo vital para simular caídas de nodos, saturación de RAM (pruebas de OOMKilled) y validar que las políticas de *Self-Healing* (Autosaneamiento) de Swarm funcionen antes de recibir tráfico de usuarios reales.
