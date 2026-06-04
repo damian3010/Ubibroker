@@ -9,8 +9,8 @@ Este documento traza la ruta de ejecución para construir la arquitectura de mic
 
 * **Fase 1 (Semana 1): Cimientos y Emulación.** Orquestación base y Virtual Broker Mock.
 * **Fase 2 (Semana 2): Capa Anticorrupción.** Microservicio en Golang y caché en Redis.
-* **Fase 3 (Semanas 3 y 4): Cerebro Transaccional.** Microservicios Spring Boot y reglas de negocio.
-* **Fase 4 (Semanas 5 y 6): Asincronía, Observabilidad y Producción.** RabbitMQ, Stack PLG y clúster Swarm.
+* **Fase 3 (Semanas 3 y 4): Cerebro Transaccional.** Microservicios Spring Boot, gestión documental y reglas de negocio.
+* **Fase 4 (Semanas 5 y 6): Asincronía, Observabilidad y Producción.** RabbitMQ, notificaciones omnicanal, Stack PLG y clúster Swarm.
 
 ---
 
@@ -24,7 +24,7 @@ Este documento traza la ruta de ejecución para construir la arquitectura de mic
 | :--- | :--- | :--- |
 | Orquestación Inicial | `docker-compose.yml` base funcional. | Generación automática de topología de redes, volúmenes y puertos seguros. |
 | Aprovisionamiento de Datos | Contenedores de Postgres, Redis, RabbitMQ. | Creación de scripts SQL de inicialización (schemas, usuarios, roles). |
-| Virtual Broker (Mock) | Servicio `virtual-broker-mock` operativo. | Generación de endpoints REST y JSON semilla basados en las especificaciones del core bancario. |
+| Virtual Broker (Mock) | Servicio `virtual-broker-mock` operativo. | Generación de endpoints REST y JSON semilla basados en las especificaciones del core. |
 | Pruebas de Red | Comunicación entre contenedores verificada. | Diagnóstico de errores DNS internos de Docker. |
 
 ### Fase 2: Construcción de la Capa Anticorrupción (Velocidad)
@@ -33,37 +33,39 @@ Este documento traza la ruta de ejecución para construir la arquitectura de mic
 
 | Tarea Técnica | Entregable | Apoyo de IA (Antigravity/Cursor) |
 | :--- | :--- | :--- |
-| Estructura en Go | `integration-service-go` configurado. | Configuración de Fiber/Gin, *middlewares* y `Dockerfile` multi-etapa (imagen < 20MB). |
+| Estructura en Go | `integration-service-go` configurado. | Configuración de Fiber/Gin, *middlewares* y `Dockerfile` multi-etapa (< 20MB). |
 | Integración Redis | Patrón *Cache-Aside* implementado. | Autocompletado de lógica de conexión, TTL y control de fallos (Cache Miss/Hit). |
 | Concurrencia | Enrutamiento HTTP hacia el Mock. | Generación de clientes HTTP seguros utilizando *Goroutines* y *Channels*. |
-| Pruebas de Carga | Benchmarks del servicio Go. | Creación de scripts en K6 o JMeter para saturar el endpoint y validar la caché. |
+| Pruebas de Carga | Benchmarks del servicio Go. | Creación de scripts para saturar el endpoint y validar la caché. |
 
-### Fase 3: Core de Negocio (Domain-Driven Design en Java)
+### Fase 3: Core de Negocio y Documental (Java Spring Boot)
 **Duración:** Semanas 3 y 4
-**Objetivo:** Implementar la lógica transaccional, seguridad y persistencia relacional.
+**Objetivo:** Implementar la lógica transaccional, seguridad, persistencia y manejo de archivos.
 
 | Tarea Técnica | Entregable | Apoyo de IA (Antigravity/Cursor) |
 | :--- | :--- | :--- |
-| Identidad y Acceso | `auth-service` con emisión de JWT. | Implementación rápida de Spring Security y filtros de validación de tokens. |
-| Dominio de Órdenes | `order-service` operativo. | Creación de Entidades JPA, Repositorios, Controladores y migraciones Flyway/Liquibase. |
-| Dominios de Soporte | `client-service` y `document-service`. | Mapeo de DTOs y validaciones de entrada basadas en reglas descritas en lenguaje natural. |
+| Identidad y Acceso | `auth-service` con emisión de JWT. | Implementación de Spring Security y filtros de validación de tokens. |
+| Dominio de Órdenes | `order-service` operativo. | Creación de Entidades JPA, Repositorios, y migraciones Flyway/Liquibase. |
+| Gestión de Clientes | `client-service` gestionando perfiles. | Mapeo de DTOs y validaciones de entrada basadas en lenguaje natural. |
+| Gestión Documental | `document-service` (Upload/Download, PDF). | Generación de plantillas HTML a PDF, manejo de archivos `Multipart` y almacenamiento. |
 | Contención de Memoria | JVM ajustada para alta concurrencia. | Cálculo de parámetros `-Xmx`, `-Xms` y asignación de `cgroups` de Docker. |
 
-### Fase 4: Asincronía, Observabilidad y Despliegue en Clúster
+### Fase 4: Mensajería, Notificaciones, Observabilidad y Despliegue
 **Duración:** Semanas 5 y 6
-**Objetivo:** Desacoplar servicios, auditar la plataforma y lanzar a producción.
+**Objetivo:** Desacoplar servicios mediante eventos, notificar al usuario, auditar la plataforma y lanzar a producción.
 
 | Tarea Técnica | Entregable | Apoyo de IA (Antigravity/Cursor) |
 | :--- | :--- | :--- |
-| Eventos con RabbitMQ | Productores y Consumidores AMQP conectados. | Configuración de colas, *exchanges* y *bindings* para flujos asíncronos (ej. "Orden Ejecutada"). |
+| Eventos Asíncronos | Productores y Consumidores AMQP en RabbitMQ. | Configuración de colas y *bindings* para flujos (ej. "Orden Ejecutada"). |
+| Notificaciones Omnicanal | `notification-service` (Email, WebSockets, Firebase). | Integración de clientes SMTP, SDK de Firebase Admin y configuración del broker STOMP. |
 | Instrumentación OTel | OpenTelemetry integrado en Go y Java. | Inyección de librerías para trazabilidad distribuida sin alterar la lógica de negocio. |
-| CI/CD Pipeline | GitHub Actions configurado. | Scripts para compilación automática, purga de imágenes antiguas y subida a registro (GHCR o ACR). |
-| Transición a Swarm | `docker-compose.prod.yml` final. | Implementación de directivas `deploy`, *placement constraints* y despliegue *Zero Downtime*. |
+| CI/CD Pipeline | GitHub Actions configurado. | Scripts para compilación automática, limpieza de imágenes y push al registro (ACR). |
+| Transición a Swarm | `docker-compose.prod.yml` final. | Implementación de directivas `deploy` y estrategia de *Zero Downtime*. |
 
 ---
 
 ## 3. Ventaja Estratégica del Plan a 6 Semanas
 
 Distribuir el proyecto en 6 semanas utilizando herramientas de IA permite un equilibrio perfecto entre **velocidad de escritura** y **calidad de arquitectura**:
-1. **Foco en el Diseño, no en la Sintaxis:** La IA asume el trabajo pesado de codificar los *boilerplates* y configuraciones YAML, permitiendo al equipo dedicar las semanas 3 y 4 puramente a refinar las reglas de negocio críticas.
-2. **Espacio para el Caos (Chaos Engineering):** Las semanas 5 y 6 ofrecen un margen de tiempo vital para simular caídas de nodos, saturación de RAM (pruebas de OOMKilled) y validar que las políticas de *Self-Healing* (Autosaneamiento) de Swarm funcionen antes de recibir tráfico de usuarios reales.
+1. **Foco en el Diseño, no en la Sintaxis:** La IA asume el trabajo pesado de codificar los *boilerplates* (como la configuración Multipart de documentos o el SDK de Firebase), permitiendo al equipo centrarse en refinar las reglas de negocio.
+2. **Espacio para el Caos (Chaos Engineering):** Las semanas 5 y 6 ofrecen un margen vital para probar la asincronía (verificar que el `notification-service` no bloquee al `order-service`), simular caídas de RAM y validar el *Self-Healing* antes de recibir tráfico de usuarios reales.
