@@ -45,7 +45,7 @@ Aloja la red de enrutamiento y los microservicios sin estado (Java, Go, API Gate
 | Recurso | Configuración Recomendada (Por Servidor) | Justificación |
 | :--- | :--- | :--- |
 | **Procesador** | 8 a 16 Núcleos (Cores) | Manejo de alta concurrencia (hilos JVM de Spring Boot). |
-| **Memoria RAM** | 32 GB a 64 GB RAM | Reserva de memoria holgada para el Garbage Collector de Java. |
+| **Memoria RAM** | 32 GB  | Reserva de memoria holgada para el Garbage Collector de Java. |
 | **Almacenamiento**| 500 GB SSD Enterprise | Sistema operativo y caché temporal de imágenes Docker. |
 
 ### Nodos de Datos (Capa de Persistencia)
@@ -57,6 +57,47 @@ Aloja los servicios con estado (PostgreSQL, Redis, RabbitMQ). Se requieren 2 ser
 | **Memoria RAM** | 32 GB a 64 GB RAM | Caché de índices de Postgres y persistencia en memoria pura de Redis. |
 | **Almacenamiento**| 1 TB a 2 TB NVMe (RAID 1 o 10) | **Crítico:** Las bases de datos financieras exigen latencia de I/O en submilisegundos y tolerancia a fallos de disco. |
 
+# Presupuesto de Memoria (RAM Mapping) - Servidor 32 GB
+
+Este documento detalla la estrategia de asignación y limitación de memoria RAM para el despliegue de la arquitectura **UbiBroker** en un entorno de producción (nodo único o clúster base) con un límite físico de 32 GB de RAM, diseñado para soportar una concurrencia estimada de 100 usuarios simultáneos.
+
+---
+
+## 2.1 Distribución del Presupuesto (RAM Budget)
+
+La siguiente tabla muestra la distribución estricta de la memoria para evitar el colapso del servidor por falta de recursos (Out Of Memory).
+
+| Componente | Límite RAM Asignado | Porcentaje Aprox. | Justificación Arquitectónica |
+| :--- | :--- | :--- | :--- |
+| **Sistema Operativo + Docker** | 4.0 GB | 12.5% | Reserva inamovible para garantizar la estabilidad del kernel de Linux y los demonios de Swarm. |
+| **PostgreSQL** | 6.0 GB | 18.7% | Asignación holgada para `shared_buffers` y manejo de >100 conexiones concurrentes sin tocar disco duro. |
+| **Redis + RabbitMQ** | 2.0 GB | 6.2% | Redis consumirá <100 MB para caché transaccional. RabbitMQ utilizará el resto para el enrutamiento de eventos asíncronos. |
+| **API Gateway / Nginx** | 2.0 GB | 6.2% | Manejo de conexiones entrantes, terminación SSL y enrutamiento hacia la red interna. |
+| **Integration Service (Golang)**| 0.5 GB | 1.5% | Microservicio de alto rendimiento. En operación real consumirá entre 30-60 MB. Límite preventivo. |
+| **Servicios Spring Boot (x5)** | 12.5 GB | 39.0% | *Auth, Order, Client, Document, Notif*. Límite duro de **2.5 GB por contenedor** para contener la JVM. |
+| **Colchón de Seguridad** | 5.0 GB | 15.6% | Memoria libre no asignada para absorber picos inesperados de tráfico o procesos en segundo plano. |
+| **TOTAL ASIGNADO** | **32.0 GB** | **100%** | |
+
+---
+
+## 2.2 Configuración de Contención (Límites Estrictos)
+
+El presupuesto anterior es teórico hasta que se imponen límites a nivel de infraestructura. Java (Spring Boot), por su naturaleza, intentará consumir toda la RAM disponible si no se le restringe.
+
+Para aplicar este presupuesto, se implementan dos capas de seguridad en el archivo `docker-compose.prod.yml`:
+
+### Capa 1: Límite del Contenedor (cgroups de Linux)
+Le indica a Docker Swarm el máximo absoluto permitido. Si el contenedor sobrepasa este límite, el **OOM Killer** de Linux lo detendrá inmediatamente (`Error 137`) para proteger al resto del servidor.
+
+```yaml
+    deploy:
+      resources:
+        limits:
+          memory: 2560M # Límite duro de 2.5 GB
+        reservations:
+          memory: 1024M # 1.0 GB garantizados al inicializar
+
+```
 ---
 
 ## 3. Infraestructura CI/CD y Registro de Imágenes (GitHub)
