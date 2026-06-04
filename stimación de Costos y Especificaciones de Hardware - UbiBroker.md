@@ -100,6 +100,71 @@ Le indica a Docker Swarm el máximo absoluto permitido. Si el contenedor sobrepa
 ```
 ---
 
+# Estrategia de Contención de Memoria y Resiliencia (UbiBroker)
+
+Este documento detalla la configuración a nivel de aplicación (Capa 2) para el control de memoria de los microservicios Java y describe el comportamiento automatizado de la arquitectura ante desbordamientos (Plan de Contingencia).
+
+---
+
+## 2.3. Capa 2: Límite a Nivel de Aplicación (JVM Tuning)
+
+Aunque el contenedor Docker tenga un límite duro de RAM asignado por el sistema operativo, la Máquina Virtual de Java (JVM) requiere instrucciones explícitas para no intentar reservar más memoria de la permitida. Si no se configura, la JVM asumirá que tiene acceso a toda la RAM del servidor físico.
+
+Para garantizar que cada microservicio Spring Boot respete el presupuesto asignado y deje memoria libre para los procesos de red y el propio contenedor Linux, se implementa la variable de entorno `JAVA_OPTS` en el archivo de despliegue (`docker-compose.prod.yml`).
+
+### Configuración en Docker Swarm:
+```yaml
+    environment:
+      - JAVA_OPTS="-Xms1024m -Xmx1536m -XX:+UseG1GC"
+```
+### Justificación Técnica de los Parámetros:
+* **-Xms1024m (Initial Heap Size):** Indica a la JVM que reserve inmediatamente 1 GB de RAM al arrancar. Esto evita que la aplicación pierda tiempo de CPU solicitando bloques de memoria al sistema operativo durante los primeros minutos de ejecución.
+
+* **J-Xmx1536m (Maximum Heap Size):** Establece el límite absoluto para el almacenamiento interno de objetos en Java en 1.5 GB. Dado que el contenedor tiene un límite duro de 2.5 GB, esto garantiza que quede 1 GB libre para hilos nativos, buffers del sistema y el proceso base de Linux.
+
+* **J-XX:+UseG1GC (Garbage-First Garbage Collector):** Activa el recolector de basura optimizado para entornos transaccionales. G1GC divide la memoria en regiones y limpia la basura en fracciones de milisegundos, evitando los bloqueos prolongados ("Stop-The-World pauses") que causarían lentitud en las operaciones de los ejecutivos.
+
+
+# Plan de Contingencia: Resiliencia y Zero Downtime (UbiBroker)
+
+Este documento describe el comportamiento automatizado de la arquitectura de UbiBroker ante fallos críticos de infraestructura o desbordamientos de memoria (Out-Of-Memory). El objetivo de este plan es garantizar la continuidad del negocio y mantener la experiencia del usuario intacta (Zero Downtime) durante incidentes aislados.
+
+---
+
+## 1. El Principio de Autosaneamiento (Self-Healing)
+
+En una arquitectura de microservicios transaccionales diseñada para alta concurrencia (ej. 100 usuarios simultáneos), los fallos a nivel de contenedor no se tratan como emergencias manuales, sino como eventos esperados que el sistema debe resolver de forma autónoma.
+
+La resiliencia del sistema se basa en no almacenar "estado" (sesiones de usuario, archivos temporales) dentro de los contenedores de procesamiento. Si un contenedor muere, no se pierde información crítica.
+
+---
+
+## 2. Flujo de Reacción ante Incidentes (Ej. Desbordamiento de RAM)
+
+Cuando una anomalía provoca que un microservicio (como el `order-service` en Java) intente consumir más recursos de los que tiene asignados en su límite duro, la arquitectura ejecuta un protocolo de tres fases en cuestión de segundos:
+
+### Fase A: Intervención del Sistema Operativo (Aislamiento)
+Para evitar que un microservicio defectuoso consuma toda la memoria del servidor físico y provoque una caída general del sistema:
+1. Las políticas de control de recursos del kernel de Linux (`cgroups`) detectan la infracción del límite de memoria asignado.
+2. El sistema operativo invoca al **OOM Killer (Out-Of-Memory Killer)**.
+3. Se envía una señal de terminación inmediata (`SIGKILL`) al proceso defectuoso. El contenedor es destruido al instante, registrando el evento con un **Error 137 (OOMKilled)** en los logs.
+
+### Fase B: Recuperación Autónoma (Orquestación)
+1. **Docker Swarm** monitorea constantemente el "estado deseado" de la infraestructura.
+2. Al detectar que un contenedor ha sido destruido, evalúa la política de reinicio declarada en el despliegue:
+   ```yaml
+   restart_policy:
+     condition: on-failure
+     delay: 5s
+     max_attempts: 3
+3. El orquestador aprovisiona y despliega un nuevo contenedor limpio de forma automática. En el caso de Spring Boot, este proceso toma entre 15 y 20 segundos.
+### Fase C: Aislamiento del Cliente (Zero Downtime)
+El objetivo de negocio es que las operaciones de los ejecutivos no se vean interrumpidas:
+1.Redundancia Activa: Gracias al despliegue en Alta Disponibilidad (replicas: 2), siempre hay al menos un contenedor de respaldo operando al 100% de su capacidad.
+2.Balanceo de Carga Inteligente: Durante los segundos que toma reiniciar el contenedor caído, el Ingress Routing Mesh (la red de enrutamiento interno de Swarm) elimina la IP del nodo defectuoso.
+3.Redirección Transparente: El 100% del tráfico de los usuarios se redirige instantáneamente hacia la réplica sobreviviente.
+
+
 ## 3. Infraestructura CI/CD y Registro de Imágenes (GitHub)
 
 Costos asociados a la compilación y almacenamiento de las imágenes Docker (GitHub Actions + GitHub Container Registry).
