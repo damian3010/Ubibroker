@@ -69,3 +69,47 @@ Costos asociados a la compilación y almacenamiento de las imágenes Docker (Git
 | **GitHub Team** | **$4.00 USD / usuario** | 2 GB Almacenamiento <br> 3,000 minutos CI/CD | $0.25 USD / GB extra <br> $0.008 USD / minuto extra |
 
 > **Estrategia de Optimización:** Para evitar sobrecostos en almacenamiento (debido al tamaño de las imágenes Java), se implementarán scripts de retención en GitHub Actions que eliminen versiones antiguas de las imágenes tras cada compilación exitosa, manteniendo solo las últimas 3 releases estables.
+
+# Estimación de Costos - Azure Container Registry (ACR)
+
+Este documento detalla los costos asociados con el almacenamiento y la distribución de nuestras imágenes Docker utilizando el registro privado nativo de Microsoft Azure. Es una alternativa robusta para centralizar las imágenes de nuestros microservicios de negocio.
+
+---
+
+## 4. Modelos de Precios de ACR (Tiers de Servicio)
+
+Azure Container Registry se factura bajo una tarifa fija diaria basada en el "Tier" o nivel de servicio seleccionado. Cada nivel incluye una capacidad de almacenamiento base. Si se supera ese almacenamiento, se factura un costo incremental por gigabyte extra.
+
+| Tier / Nivel | Tarifa Fija Diaria | Costo Mensual Aprox. | Almacenamiento Incluido | Operaciones Incluidas (Lectura/Escritura) |
+| :--- | :--- | :--- | :--- | :--- |
+| **Básico (Basic)** | ~$0.167 USD | **~$5.00 USD** | 10 GB | 10,000 Read / 2,000 Write (por día) |
+| **Estándar (Standard)** | ~$0.667 USD | **~$20.00 USD** | 100 GB | 100,000 Read / 20,000 Write (por día) |
+| **Premium** | ~$1.667 USD | **~$50.00 USD** | 500 GB | 500,000 Read / 50,000 Write (por día) |
+
+### Costos por Excedentes (Pay-as-you-go)
+* **Almacenamiento Adicional:** **$0.003 USD al día por GB** (aproximadamente **$0.10 USD por GB al mes**).
+* **Ancho de banda (Egress Data):** La subida de imágenes a Azure es gratuita. La descarga de imágenes desde Azure hacia tus servidores locales (On-Premises) tiene un costo de ancho de banda de red de aproximadamente **$0.08 USD por GB** (después de los primeros 100 GB gratuitos al mes).
+
+---
+
+## 5. Recomendación para UbiBroker
+
+### Para Demos y Pruebas iniciales: **Tier Básico**
+* **Análisis de Capacidad:** Nuestras imágenes optimizadas ocupan aproximadamente:
+  * Microservicios Java (Spring Boot) c/u: ~150 MB - 200 MB
+  * Servicio de Integración (Golang): ~20 MB
+  * Servicios de Infraestructura (Postgres, Redis, RabbitMQ): ~400 MB en total
+* **Total del ecosistema por versión:** Menos de 1.5 GB.
+* El **Tier Básico (10 GB)** es más que suficiente para almacenar hasta 5 o 6 versiones completas e históricas de toda nuestra arquitectura sin generar cargos por almacenamiento extra.
+
+---
+
+## 6. Estrategia de Conexión con nuestro Pipeline (GitHub Actions)
+
+Al implementar ACR, el flujo de entrega continua se ejecuta de la siguiente manera sin necesidad de almacenar datos en GitHub:
+
+1. **GitHub Actions** compila el código de Java o Go.
+2. Construye la imagen Docker en los servidores de GitHub.
+3. Hace un *Login* seguro en Azure usando una entidad de servicio (Service Principal).
+4. Hace un `docker push` directamente a `ubibroker.azurecr.io`.
+5. Durante el despliegue en producción (Docker Swarm local), nuestros servidores físicos se autentican contra Azure y descargan las imágenes actualizadas de forma segura.
