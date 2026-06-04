@@ -61,4 +61,11 @@ Aloja los servicios con estado (PostgreSQL, Redis, RabbitMQ). Se requieren 2 ser
 
 ## 3. Infraestructura CI/CD y Registro de Imágenes (GitHub)
 
-Costos asociados a la compilación y almacenamiento de las imágenes Docker
+Costos asociados a la compilación y almacenamiento de las imágenes Docker (GitHub Actions + GitHub Container Registry).
+
+| Plan | Costo Base | Incluye (Gratis mensual) | Costos por Excedente |
+| :--- | :--- | :--- | :--- |
+| **GitHub Free** | **$0.00 USD** | 500 MB Almacenamiento <br> 2,000 minutos CI/CD | $0.25 USD / GB extra <br> $0.008 USD / minuto extra |
+| **GitHub Team** | **$4.00 USD / usuario** | 2 GB Almacenamiento <br> 3,000 minutos CI/CD | $0.25 USD / GB extra <br> $0.008 USD / minuto extra |
+
+> **Estrategia de Optimización:** Para evitar sobrecostos en almacenamiento (debido al tamaño de las imágenes Java), se implementarán scripts de retención en GitHub Actions que eliminen versiones antiguas de las imágenes tras cada compilación exitosa, manteniendo solo las últimas 3 releases estables.
